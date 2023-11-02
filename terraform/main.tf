@@ -1,6 +1,10 @@
 terraform {
   required_version = ">= 0.12"
-  backend "local" {}
+  backend "s3" {
+    bucket = "myapp-tf-s3-bucket"
+    key = "myapp/state.tfstate"
+    region = "eu-central-1"
+  }
 }
 
 provider "aws" {
