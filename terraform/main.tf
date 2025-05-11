@@ -1,9 +1,9 @@
 terraform {
   required_version = ">= 0.12"
   backend "s3" {
-    bucket = "myapp-tf-s3-bucket"
+    bucket = "jenkins-backup-bucket-03-06-1974"
     key = "myapp/state.tfstate"
-    region = "us-west-2"
+    region = "eu-west-2"
   }
 }
 
