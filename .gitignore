@@ -7,6 +7,9 @@ target/
 # Terraform state files
 *.tfstate
 *.tfstate.*
+terraform/.terraform
+terraform/.*
+
 
 # Crash log files
 crash.log
