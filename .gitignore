@@ -3,10 +3,6 @@
 # Maven build output
 target/
 
-# Terraform local directories
-.terraform/
-terraform/
-terraform/.terraform/
 
 # Terraform state files
 *.tfstate
