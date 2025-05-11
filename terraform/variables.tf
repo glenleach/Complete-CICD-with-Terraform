@@ -5,20 +5,20 @@ variable subnet_cidr_block {
   default = "10.0.10.0/24"
 }
 variable avail_zone {
-  default = "eu-central-1a"
+  default = "eu-west-2a"
 }
 variable env_prefix {
   default = "dev"
 }
 variable my_ip {
-  default = "85.246.32.98/32"
+  default = "86.149.214.244/32"
 }
 variable jenkins_ip {
-  default = "165.232.114.245/32"
+  default = "18.171.168.9/32"
 }
 variable instance_type {
   default = "t2.micro"
 }
 variable region {
-  default = "eu-central-1"
+  default = "eu-west-2"
 }

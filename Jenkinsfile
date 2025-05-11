@@ -2,8 +2,7 @@
 
 library identifier: 'jenkins-shared-library@master', retriever: modernSCM(
   [$class: 'GitSCMSource',
-  remote: 'https://gitlab.com/twn-devops-bootcamp/latest/12-terraform/jenkins-shared-library.git',
-  credentialsId: 'gitlab-credentials'
+  remote: 'https://gitlab.com/twn-devops-bootcamp/latest/12-terraform/jenkins-shared-library.git'
   ]
 )
 
@@ -13,7 +12,7 @@ pipeline {
     maven 'Maven'
   }
   environment {
-    IMAGE_NAME = 'nanatwn/demo-app:java-maven-2.0'
+    IMAGE_NAME = 'glenleach/java-maven-app:jma-2.0'
   }
   stages {
     stage("build app") {
@@ -55,7 +54,7 @@ pipeline {
     }
     stage("deploy") {
       environment {
-        DOCKER_CREDS = credentials('docker-hub-repo')
+        DOCKER_CREDS = credentials('dockerhub-creds')
       }
       steps {
         script {
