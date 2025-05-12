@@ -14,7 +14,7 @@ variable my_ip {
   default = "86.149.214.244/32"
 }
 variable jenkins_ip {
-  default = "18.171.168.9/32"
+  default = "35.176.231.103/32"
 }
 variable instance_type {
   default = "t2.micro"
