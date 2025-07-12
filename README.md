@@ -1,11 +1,11 @@
 # Demo App – DevOps Bootcamp Training (TechWorld with Nana)
-This repository is part of the DevOps Bootcamp from TechWorld with Nana.
+This project is part of the DevOps Bootcamp from TechWorld with Nana.
 
 # java-maven-app-with-terraform
 
-This repository demonstrates how to integrate **Terraform** into a CI/CD pipeline using **Jenkins**. It builds upon a previous use case where a Docker image was built in a pipeline and then deployed to a remote server. In this enhanced demo, **Terraform** is used to provision the remote server as part of the automated CI/CD process.
+This project demonstrates how to integrate **Terraform** into a CI/CD pipeline using **Jenkins**. It builds upon a previous use case where a Docker image was built in a pipeline and then deployed to a remote server. In this enhanced demo, **Terraform** is used to provision the remote server as part of the automated CI/CD process.
 
-> **This repository is part of the Terraform training series with Techworld with Nana DevOps Bootcamp. A Complete CI/CD with Terraform part 1, 2, and 3.**
+> **This project is part of the Terraform training series with Techworld with Nana DevOps Bootcamp. A Complete CI/CD with Terraform part 1, 2, and 3.**
 
 ## Key Features
 
