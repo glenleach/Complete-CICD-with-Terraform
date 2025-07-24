@@ -1,11 +1,88 @@
-# Project Overview: Jenkins, Terraform, Docker, and Shared Library Integration
+# Complete CICD with Terraform
 
-This project automates infrastructure provisioning and application deployment using Terraform, Jenkins, Docker, and a shared Groovy library. Below you'll find a step-by-step explanation of the setup, requirements, and workflow.
+## Project Overview
+This project demonstrates how to implement a complete CI/CD pipeline using Jenkins, Docker, and Terraform to automate the build, test, infrastructure provisioning, and deployment of a Java Maven application with a PostgreSQL database on AWS EC2. The project emphasizes best practices in infrastructure as code, automation, and secure credential management.
+
+## Prerequisites
+- AWS account with programmatic access (Access Key ID and Secret Access Key)
+- Docker Hub account for image storage
+- Jenkins server with required plugins (Pipeline, Docker, SSH Agent, Credentials Binding)
+- SSH key pair for EC2 access, registered in Jenkins credentials
+- Terraform installed and configured
+- Maven installed and configured in Jenkins
+
+### Jenkins Credentials Setup
+Before running the pipeline, you must add the following credentials in Jenkins (Manage Jenkins > Credentials):
+
+1. **AWS Credentials**
+   - Type: "Username with password" or "Secret text"
+   - ID: `jenkins_aws_access_key_id` (for Access Key ID), `jenkins-aws_secret_access_key` (for Secret Access Key)
+   - Used for: Allowing Terraform to authenticate with AWS for provisioning resources
+
+2. **Docker Hub Credentials**
+   - Type: "Username with password"
+   - ID: `docker-hub-repo`
+   - Used for: Authenticating with Docker Hub to push and pull images
+
+3. **EC2 SSH Key**
+   - Type: "SSH Username with private key"
+   - ID: `server-ssh-key`
+   - Username: `ec2-user`
+   - Private Key: Paste the contents of your AWS EC2 PEM file (see below)
+   - Used for: Allowing Jenkins to SSH into the EC2 instance for deployment
+
+#### Setting Up the EC2 Key Pair
+- When you provision your EC2 instance with Terraform, you must specify a key pair using the `key_name` attribute:
+  ```hcl
+  associate_public_ip_address = true
+  key_name = "myapp-key-pair"
+  ```
+- Create this key pair in the AWS Console (EC2 > Key Pairs > Create key pair) and download the PEM file (e.g., `myapp-key-pair.pem`).
+- Store the PEM file securely. You will need to use its contents as the private key in your Jenkins credential (see above).
+- This key pair allows Jenkins to SSH into the EC2 instance for automated deployment. Only the holder of the private key (Jenkins, via the credential) can access the instance as `ec2-user`.
+
+> **Note:** The credential IDs must match those referenced in the Jenkinsfile. Store all credentials securely and never hard-code secrets in your codebase.
 
 ---
 
-## 1. Terraform Configuration Overview
+## Jenkinsfile & Pipeline Overview
+The Jenkinsfile defines a declarative pipeline with the following stages:
 
+1. **Build App**
+   - Uses a shared library function `buildJar()` to compile the Java Maven application and produce a JAR file.
+2. **Build Image**
+   - Uses shared library functions `buildImage()`, `dockerLogin()`, and `dockerPush()` to build a Docker image, log in to Docker Hub, and push the image.
+3. **Provision Server**
+   - Runs Terraform commands to provision an AWS EC2 instance. Retrieves the public IP of the new server for deployment.
+4. **Deploy**
+   - Waits for the EC2 server to initialize.
+   - Uses the SSH Agent plugin to securely connect to the EC2 instance.
+   - Copies the `docker-compose.yaml` and `server-cmds.sh` files to the server.
+   - Executes the shell script to launch Docker Compose, which starts two containers: one for PostgreSQL and one for the Java Maven app.
+
+### Why Use a Jenkins Shared Library?
+A Jenkins shared library encapsulates common pipeline steps such as building the JAR, building and pushing Docker images, and Docker authentication. This promotes reusability and keeps the Jenkinsfile clean and maintainable. The shared library is referenced at the top of the Jenkinsfile and its functions are called within the pipeline stages.
+
+---
+
+## CI/CD with Jenkins and Credentials Setup
+- Jenkins credentials are used to securely store sensitive information such as AWS keys and Docker Hub credentials.
+- The pipeline references these credentials using the `credentials()` function in the environment block, ensuring secrets are not hardcoded.
+- The SSH Agent plugin is used to provide the SSH private key for connecting to the EC2 instance during deployment.
+
+---
+
+## Deployment Process: EC2, SSH, Docker Compose
+- **Terraform** provisions an EC2 instance and outputs its public IP.
+- The pipeline waits for the server to initialize (using a sleep step).
+- Using SSH, Jenkins copies the deployment scripts and Docker Compose file to the EC2 instance.
+- The shell script is executed remotely, which runs Docker Compose to start two containers:
+  - **PostgreSQL**: Provides the database backend for the application.
+  - **Java Maven App**: The main application, built and packaged as a Docker image.
+
+---
+
+## Terraform Configuration Overview
 **File: `terraform/main.tf`**
 
 ```hcl
@@ -17,126 +94,88 @@ backend "s3" {
 }
 ```
 
-### Step-by-Step Explanation
-
-- **Terraform Version Requirement**  
-  Ensures Terraform version 0.12 or higher is used for compatibility.
-
-- **Remote State Backend (S3)**  
-  Configures Terraform to store its state file in an AWS S3 bucket for team collaboration and state locking:
-  - `bucket`: S3 bucket name for state storage.
-  - `key`: Path within the bucket for the state file.
-  - `region`: AWS region of the bucket.
+- **Terraform Version Requirement**: Ensures Terraform version 0.12 or higher is used for compatibility.
+- **Remote State Backend (S3)**: Configures Terraform to store its state file in an AWS S3 bucket for team collaboration and state locking.
 
 ---
 
-## 2. Jenkins, Docker, and Shared Library Integration
+## Setting Up Terraform State in an S3 Bucket
 
-- **Docker Hub Repo ID Consistency**  
-  The Docker Hub repository ID set up in Jenkins **must match** the one used in your shared library repository (where your Groovy scripts like `buildJar()` reside). This ensures Jenkins builds and pushes images to the correct Docker Hub repository.
+To enable remote state management and collaboration, Terraform state should be stored in an S3 bucket. Follow these steps to set up and use S3 as your backend:
 
-- **Jenkins Server Requirements**
-  - **Terraform Installed**: Jenkins (running in a container) must have Terraform installed to provision infrastructure.
-  - **Docker Installed**: Docker must be available inside the Jenkins container for building and running images.
-  - **SSH Agent**: Jenkins requires an SSH agent to connect to remote servers for deployment and Docker operations.
+### 1. Create an S3 Bucket
+- Go to the AWS Console > S3 > Create bucket.
+- Choose a unique bucket name (e.g., `jenkins-backup-bucket-123456789`).
+- Select the region (e.g., `eu-west-2`).
+- Leave other settings as default or adjust as needed.
 
----
+### 2. (Recommended) Enable State Locking with DynamoDB
+- Go to AWS Console > DynamoDB > Create table.
+- Table name: `terraform-lock` (or similar)
+- Partition key: `LockID` (String)
+- Update your backend config in `main.tf` to include DynamoDB table:
+  ```hcl
+  backend "s3" {
+    bucket         = "jenkins-backup-bucket-123456789"
+    key            = "myapp/state.tfstate"
+    region         = "eu-west-2"
+    dynamodb_table = "terraform-lock"
+  }
+  ```
 
-## 3. AWS Credentials Management for Jenkins
+### 3. Update IAM Permissions
+- Ensure the IAM user or role used by Jenkins/Terraform has permissions for S3 (GetObject, PutObject, ListBucket) and DynamoDB (if used).
 
-- **Manual Credential Setup**
-  - You must manually create an AWS Access Key ID and Secret Access Key in AWS IAM.
-  - These credentials are then added to Jenkins as "Secret Text" or "Username with password" credentials.
+### 4. Initialize Terraform
+- In the `terraform` directory, run:
+  ```sh
+  terraform init
+  ```
+- This will configure Terraform to use the S3 backend and migrate any local state to S3.
 
-- **Environment Variable Usage**
-  - In Jenkins, these credentials are exposed to the build environment using environment variable names (commonly `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`).
-  - This allows Terraform (and other AWS CLI tools) running in Jenkins to authenticate and access AWS resources, such as the S3 bucket for state storage or provisioning new instances.
-
-- **Security Note**
-  - Never hard-code AWS credentials in your code or Terraform files. Always use Jenkins credentials and environment variables for secure access.
-
----
-
-## 4. Typical Workflow
-
-1. **Jenkins Pipeline Starts**
-   - Loads shared Groovy library functions (e.g., `buildJar()`).
-   - Ensures Docker and Terraform are available in the Jenkins environment.
-
-2. **AWS Credentials Injection**
-   - Jenkins injects AWS credentials as environment variables for the build.
-
-3. **Terraform Operations**
-   - Terraform uses the injected credentials to access the S3 backend and provision AWS resources.
-
-4. **Docker Build & Push**
-   - Jenkins builds Docker images and pushes them to Docker Hub, using the consistent repository ID.
-
-5. **Remote Deployment**
-   - Jenkins uses SSH agent to connect to target servers and deploy Docker containers using the images from Docker Hub.
+### 5. Run the Pipeline
+- Once the backend is configured and initialized, the Jenkins pipeline will be able to provision infrastructure and manage state remotely.
 
 ---
 
-## 5. Shared Library Usage for Groovy Scripts
-
-- **Remote Shared Library**  
-  The Groovy script used in the Jenkins pipeline is sourced from Nana's remote Git repository as a [Jenkins Shared Library](https://gitlab.com/twn-devops-bootcamp/latest/12-terraform/jenkins-shared-library.git). This allows for centralized management and reuse of pipeline functions (such as `buildJar()`) across multiple projects and Jenkinsfiles.
-
-- **Alternative: Local Implementation**  
-  Alternatively, the Groovy script and its resources could have been implemented directly within the same Git repository as your Terraform and application code. This approach can simplify setup for smaller projects but may reduce reusability and maintainability for larger or multi-project environments.
+## Jenkins, Docker, and Shared Library Integration
+- **Docker Hub Repo ID Consistency**: The Docker Hub repository ID set up in Jenkins must match the one used in your shared library repository.
+- **Jenkins Server Requirements**: Jenkins must have Terraform, Docker, and SSH agent available for provisioning and deployment.
 
 ---
 
-## 6. Jenkins Job Setup Instructions
-
-- **Create a Multibranch Pipeline Job**
-  - In Jenkins, create a new job and select **Multibranch Pipeline** as the job type.
-  - Under **Branch Sources**, choose **Git** and enter your repository URL in the **Project Repository** field.
-  - Use the **Filter by name (with wildcards)** option to specify the branch you want Jenkins to build from, e.g., `jenkinsfile-sshagent`.
-  - This ensures Jenkins only triggers builds for the specified branch containing your Jenkinsfile.
-
-- **Maven Tool Configuration**
-  - In **Manage Jenkins** > **Global Tool Configuration**, ensure that Maven is installed and the tool name is set to **Maven**.
-  - This name must match the `tool name` referenced in your Jenkinsfile or pipeline scripts.
+## AWS Credentials Management for Jenkins
+- **Manual Credential Setup**: Create AWS credentials in IAM and add them to Jenkins as credentials.
+- **Environment Variable Usage**: Credentials are exposed as environment variables for Terraform and AWS CLI tools.
+- **Security Note**: Never hard-code AWS credentials in your code or Terraform files.
 
 ---
 
-## 7. Terminating Resources with Terraform
+## Jenkins Job Setup Instructions
+- **Create a Multibranch Pipeline Job**: In Jenkins, create a new job and select Multibranch Pipeline. Configure the branch source and filter for the correct branch.
+- **Maven Tool Configuration**: Ensure Maven is installed and named "Maven" in Jenkins Global Tool Configuration.
 
-To safely destroy all resources created by Terraform, follow these steps:
+---
 
-1. **Navigate to the Terraform directory:**
+## Terminating Resources with Terraform
+1. Navigate to the Terraform directory:
    ```sh
    cd terraform
    ```
-
-2. **Initialize Terraform (if not already initialized):**
+2. Initialize Terraform (if not already initialized):
    ```sh
    terraform init
    ```
-
-3. **Check the current state and list managed resources:**
+3. Check the current state and list managed resources:
    ```sh
    terraform state list
    ```
-
-4. **Destroy all managed resources:**
+4. Destroy all managed resources:
    ```sh
    terraform destroy
    ```
-   - Review the plan and confirm when prompted.
 
 ---
 
-## 8. Summary
-
-- **Terraform**: Manages infrastructure state in S3, requires AWS credentials via environment variables.
-- **Jenkins**: Orchestrates builds, requires Docker, Terraform, and SSH agent.
-- **Docker Hub**: Repository IDs must be consistent across Jenkins and shared libraries.
-- **AWS Credentials**: Managed securely in Jenkins, injected as environment variables for Terraform and AWS CLI access.
-- **Groovy Shared Library**: Sourced from a remote repo for reusability, but could be local for simpler setups.
-- **Jenkins Job Setup**: Use a Multibranch Pipeline, filter for the correct branch, and ensure Maven is configured as "Maven".
-
----
-
-**If you need a sample Jenkinsfile, further details on credential setup, or an architecture diagram, please ask!**
+## Summary
+This project demonstrates a full DevOps workflow, from code build to automated infrastructure provisioning and application deployment. It leverages Jenkins, Docker, and Terraform to achieve a robust, repeatable, and secure CI/CD pipeline, following industry best practices learned through the TechWorld with Nana bootcamp.

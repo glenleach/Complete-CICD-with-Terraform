@@ -2,7 +2,7 @@
 
 library identifier: 'jenkins-shared-library@master', retriever: modernSCM(
   [$class: 'GitSCMSource',
-  remote: 'https://gitlab.com/twn-devops-bootcamp/latest/12-terraform/jenkins-shared-library.git'
+  remote: 'https://github.com/glenleach/jenkins-shared-library.git'
   ]
 )
 
